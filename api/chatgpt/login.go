@@ -1,17 +1,13 @@
 package chatgpt
 
 import (
-	"encoding/json"
-	"strings"
-
-	"github.com/PuerkitoBio/goquery"
-	"github.com/gin-gonic/gin"
-	"github.com/linweiyuan/go-chatgpt-api/api"
-
 	http "github.com/bogdanfinn/fhttp"
+	"github.com/gin-gonic/gin"
+	"github.com/xqdoo00o/OpenAIAuth/auth"
+
+	"github.com/linweiyuan/go-chatgpt-api/api"
 )
 
-//goland:noinspection GoUnhandledErrorResult
 func Login(c *gin.Context) {
 	var loginInfo api.LoginInfo
 	if err := c.ShouldBindJSON(&loginInfo); err != nil {
@@ -19,70 +15,13 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	userLogin := UserLogin{
-		client: api.NewHttpClient(),
-	}
-
-	// get csrf token
-	req, _ := http.NewRequest(http.MethodGet, csrfUrl, nil)
-	req.Header.Set("User-Agent", api.UserAgent)
-	resp, err := userLogin.client.Do(req)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, api.ReturnMessage(err.Error()))
+	authenticator := auth.NewAuthenticator(loginInfo.Username, loginInfo.Password, api.ProxyUrl)
+	if err := authenticator.Begin(); err != nil {
+		c.AbortWithStatusJSON(err.StatusCode, api.ReturnMessage(err.Details))
 		return
 	}
 
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusForbidden {
-			doc, _ := goquery.NewDocumentFromReader(resp.Body)
-			alert := doc.Find(".message").Text()
-			if alert != "" {
-				c.AbortWithStatusJSON(resp.StatusCode, api.ReturnMessage(strings.TrimSpace(alert)))
-				return
-			}
-		}
-
-		c.AbortWithStatusJSON(resp.StatusCode, api.ReturnMessage(getCsrfTokenErrorMessage))
-		return
-	}
-
-	// get authorized url
-	responseMap := make(map[string]string)
-	json.NewDecoder(resp.Body).Decode(&responseMap)
-	authorizedUrl, statusCode, err := userLogin.GetAuthorizedUrl(responseMap["csrfToken"])
-	if err != nil {
-		c.AbortWithStatusJSON(statusCode, api.ReturnMessage(err.Error()))
-		return
-	}
-
-	// get state
-	state, statusCode, err := userLogin.GetState(authorizedUrl)
-	if err != nil {
-		c.AbortWithStatusJSON(statusCode, api.ReturnMessage(err.Error()))
-		return
-	}
-
-	// check username
-	statusCode, err = userLogin.CheckUsername(state, loginInfo.Username)
-	if err != nil {
-		c.AbortWithStatusJSON(statusCode, api.ReturnMessage(err.Error()))
-		return
-	}
-
-	// check password
-	_, statusCode, err = userLogin.CheckPassword(state, loginInfo.Username, loginInfo.Password)
-	if err != nil {
-		c.AbortWithStatusJSON(statusCode, api.ReturnMessage(err.Error()))
-		return
-	}
-
-	// get access token
-	accessToken, statusCode, err := userLogin.GetAccessToken("")
-	if err != nil {
-		c.AbortWithStatusJSON(statusCode, api.ReturnMessage(err.Error()))
-		return
-	}
-
-	c.Writer.WriteString(accessToken)
+	c.JSON(http.StatusOK, gin.H{
+		"accessToken": authenticator.GetAccessToken(),
+	})
 }

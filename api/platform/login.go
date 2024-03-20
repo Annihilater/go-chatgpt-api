@@ -5,13 +5,12 @@ import (
 	"io"
 	"strings"
 
-	"github.com/gin-gonic/gin"
-	"github.com/linweiyuan/go-chatgpt-api/api"
-
 	http "github.com/bogdanfinn/fhttp"
+	"github.com/gin-gonic/gin"
+
+	"github.com/linweiyuan/go-chatgpt-api/api"
 )
 
-//goland:noinspection GoUnhandledErrorResult
 func Login(c *gin.Context) {
 	var loginInfo api.LoginInfo
 	if err := c.ShouldBindJSON(&loginInfo); err != nil {
@@ -64,7 +63,7 @@ func Login(c *gin.Context) {
 	req, _ := http.NewRequest(http.MethodPost, dashboardLoginUrl, strings.NewReader("{}"))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", api.UserAgent)
-	req.Header.Set("Authorization", api.GetAccessToken(getAccessTokenResponse.AccessToken))
+	req.Header.Set(api.AuthorizationHeader, "Bearer "+getAccessTokenResponse.AccessToken)
 	resp, err = userLogin.client.Do(req)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, api.ReturnMessage(err.Error()))
